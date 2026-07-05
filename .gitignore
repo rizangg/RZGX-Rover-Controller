@@ -1,0 +1,27 @@
+# Arduino build outputs
+build/
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+*.partitions
+
+# Local OS/editor files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+
+# Large media captures
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Local Codex / development workspace files
+.codex/
+.agents/
+.codex-remote-attachments/
+arduino-cli/
