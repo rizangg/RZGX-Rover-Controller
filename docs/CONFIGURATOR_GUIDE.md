@@ -1,4 +1,3 @@
-[CONFIGURATOR_GUIDE.md](https://github.com/user-attachments/files/29672237/CONFIGURATOR_GUIDE.md)
 # RZGX Rover Configurator Guide
 
 Last updated: 2026-07-03
@@ -142,7 +141,7 @@ These are field diagnostics, not a full profiler.
 
 ## Local Configurator
 
-A previous local HTML configurator prototype existed during development.
+An older local HTML configurator prototype existed during development.
 
 For public use, prefer the ESP32 WiFi Configurator served directly by the device at:
 
