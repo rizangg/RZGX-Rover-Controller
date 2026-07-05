@@ -134,7 +134,7 @@ Important files and folders:
 
 ## Acknowledgements
 
-Created and maintained by **Rizky Anggriawan Hutomo / RZGX**.
+Created and maintained by **Rizangg / RZGX**.
 
 Special thanks to **Renaldy FPV** for early MSP/DisplayPort reference work, technical discussion, and practical FPV insight during the prototype stage.
 
@@ -285,7 +285,7 @@ File dan folder penting:
 
 ## Ucapan Terima Kasih
 
-Dibuat dan dikelola oleh **Rizky Anggriawan Hutomo / RZGX**.
+Dibuat dan dikelola oleh **Rizangg / RZGX**.
 
 Terima kasih khusus untuk **Renaldy FPV** atas referensi awal MSP/DisplayPort, diskusi teknis, dan insight praktis FPV selama tahap prototype.
 
