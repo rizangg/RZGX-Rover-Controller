@@ -1,11 +1,10 @@
-[FIRMWARE_NOTES.md](https://github.com/user-attachments/files/29672210/FIRMWARE_NOTES.md)
 # Firmware Notes
 
 Last updated: 2026-07-03
 
 Firmware file:
 
-`C:\Users\Rizangg\Documents\Codex\2026-06-11\halo-codex-kemampuan-coding-saya-0\outputs\DJI_O4_ESP32S3_MSP_Emulator_v01\DJI_O4_ESP32S3_MSP_Emulator_v01.ino`
+`firmware/RZGX_Rover_Controller/RZGX_Rover_Controller.ino`
 
 Current stable version: `v3.30`
 
