@@ -136,7 +136,9 @@ Important files and folders:
 
 Created and maintained by **Rizangg / RZGX**.
 
-Special thanks to **Renaldy FPV** for early MSP/DisplayPort reference work, technical discussion, and practical FPV insight during the prototype stage.
+Special thanks to **Renaldy FPV / aldyduino** for early MSP/DisplayPort reference work, technical discussion, and practical FPV insight during the prototype stage. His public reference project, [aldyduino/ESP32MSPDisplayPort](https://github.com/aldyduino/ESP32MSPDisplayPort), demonstrated an ESP32-based MSP DisplayPort approach for DJI OSD and helped validate the feasibility of this project.
+
+This project is also inspired by the Betaflight and INAV ecosystem, especially their MSP-compatible DJI OSD workflows, DisplayPort OSD behavior, and common telemetry concepts such as GPS, battery, link quality, arming state, and home information. RZGX Rover Controller is not a Betaflight or INAV fork, and it is not a flight controller; it is a custom ESP32 surface vehicle controller.
 
 This project was developed with AI-assisted coding support from **OpenAI Codex / ChatGPT**. The AI assistance was used as an engineering tool for implementation, debugging, documentation drafting, and iteration support; project direction, hardware testing, and final decisions remain with the maintainer.
 
@@ -287,7 +289,9 @@ File dan folder penting:
 
 Dibuat dan dikelola oleh **Rizangg / RZGX**.
 
-Terima kasih khusus untuk **Renaldy FPV** atas referensi awal MSP/DisplayPort, diskusi teknis, dan insight praktis FPV selama tahap prototype.
+Terima kasih khusus untuk **Renaldy FPV / aldyduino** atas referensi awal MSP/DisplayPort, diskusi teknis, dan insight praktis FPV selama tahap prototype. Project publiknya, [aldyduino/ESP32MSPDisplayPort](https://github.com/aldyduino/ESP32MSPDisplayPort), menunjukkan pendekatan ESP32 berbasis MSP DisplayPort untuk OSD DJI dan membantu memvalidasi bahwa project ini layak dikerjakan.
+
+Project ini juga terinspirasi dari ekosistem Betaflight dan INAV, terutama workflow DJI OSD yang kompatibel dengan MSP, perilaku DisplayPort OSD, dan konsep telemetry umum seperti GPS, baterai, link quality, arming state, dan informasi home. RZGX Rover Controller bukan fork Betaflight atau INAV, dan bukan flight controller; ini adalah surface vehicle controller custom berbasis ESP32.
 
 Project ini dikembangkan dengan bantuan coding berbasis AI dari **OpenAI Codex / ChatGPT**. Bantuan AI digunakan sebagai alat engineering untuk implementasi, debugging, drafting dokumentasi, dan iterasi; arah project, pengujian hardware, dan keputusan akhir tetap berada pada maintainer.
 
