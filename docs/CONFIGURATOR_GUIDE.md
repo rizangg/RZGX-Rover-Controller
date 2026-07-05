@@ -142,11 +142,13 @@ These are field diagnostics, not a full profiler.
 
 ## Local Configurator
 
-The older local configurator is still present:
+A previous local HTML configurator prototype existed during development.
 
-`C:\Users\Rizangg\Documents\Codex\2026-06-11\halo-codex-kemampuan-coding-saya-0\outputs\surface-osd-configurator-preview\index.html`
+For public use, prefer the ESP32 WiFi Configurator served directly by the device at:
 
-It may lag behind the WiFi configurator. Prefer the ESP32 WiFi configurator unless local configurator work is explicitly requested.
+`http://10.10.4.1/`
+
+The local configurator is not part of the current stable release workflow.
 
 ## Upload / COM Port Notes
 
