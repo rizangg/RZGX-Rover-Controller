@@ -6,6 +6,12 @@ Experimental ESP32-based surface controller for RC adventure/trailing vehicles w
 > Project status: **experimental alpha / stable prototype**  
 > This is not a Betaflight or INAV flight controller. It is a custom surface vehicle controller.
 
+## Prototype
+
+![RZGX Rover Controller prototype on MN128 roof rack](media/photos/prototype-roof-rack-front.jpg)
+
+![RZGX Rover Controller DJI OSD](media/photos/OSD.png)
+
 ## What It Does
 
 RZGX Rover Controller turns an ESP32-S3 into a small control and telemetry bridge for an RC ground vehicle.
@@ -157,6 +163,12 @@ RZGX Rover Controller adalah proyek eksperimental berbasis ESP32 untuk kendaraan
 > Baseline publik saat ini: **Stable 05 / firmware v3.30**  
 > Status proyek: **experimental alpha / stable prototype**  
 > Ini bukan flight controller Betaflight atau INAV. Ini adalah surface controller custom untuk kendaraan RC darat.
+
+## Prototype
+
+![Prototype RZGX Rover Controller di roof rack MN128](media/photos/prototype-roof-rack-front.jpg)
+
+![OSD DJI RZGX Rover Controller](media/photos/OSD.png)
 
 ## Fungsi Utama
 
