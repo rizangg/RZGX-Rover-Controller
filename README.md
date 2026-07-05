@@ -117,9 +117,9 @@ Use at your own risk.
 
 Important files and folders:
 
-- `outputs/DJI_O4_ESP32S3_MSP_Emulator_v01/DJI_O4_ESP32S3_MSP_Emulator_v01.ino`  
+- `firmware/RZGX_Rover_Controller/RZGX_Rover_Controller.ino`  
   Main Arduino sketch.
-- `outputs/DJI_O4_ESP32S3_MSP_Emulator_v01/STABLE-05-NOTES.md`  
+- `docs/releases/STABLE-05.md`  
   Notes for the current stable baseline.
 - `docs/FIRMWARE_NOTES.md`  
   Firmware behavior notes.
@@ -131,8 +131,14 @@ Important files and folders:
   Test and troubleshooting notes.
 - `docs/ROADMAP.md`  
   Planned features and future ideas.
-- `backups/firmware/`  
-  Stable firmware backups.
+
+## Acknowledgements
+
+Created and maintained by **Rizky Anggriawan Hutomo / RZGX**.
+
+Special thanks to **Renaldy FPV** for early MSP/DisplayPort reference work, technical discussion, and practical FPV insight during the prototype stage.
+
+This project was developed with AI-assisted coding support from **OpenAI Codex / ChatGPT**. The AI assistance was used as an engineering tool for implementation, debugging, documentation drafting, and iteration support; project direction, hardware testing, and final decisions remain with the maintainer.
 
 ## License
 
@@ -262,9 +268,9 @@ Gunakan dengan risiko sendiri.
 
 File dan folder penting:
 
-- `outputs/DJI_O4_ESP32S3_MSP_Emulator_v01/DJI_O4_ESP32S3_MSP_Emulator_v01.ino`  
+- `firmware/RZGX_Rover_Controller/RZGX_Rover_Controller.ino`  
   Sketch Arduino utama.
-- `outputs/DJI_O4_ESP32S3_MSP_Emulator_v01/STABLE-05-NOTES.md`  
+- `docs/releases/STABLE-05.md`  
   Catatan stable baseline terbaru.
 - `docs/FIRMWARE_NOTES.md`  
   Catatan perilaku firmware.
@@ -276,8 +282,14 @@ File dan folder penting:
   Catatan troubleshooting.
 - `docs/ROADMAP.md`  
   Rencana fitur.
-- `backups/firmware/`  
-  Backup firmware stable.
+
+## Ucapan Terima Kasih
+
+Dibuat dan dikelola oleh **Rizky Anggriawan Hutomo / RZGX**.
+
+Terima kasih khusus untuk **Renaldy FPV** atas referensi awal MSP/DisplayPort, diskusi teknis, dan insight praktis FPV selama tahap prototype.
+
+Project ini dikembangkan dengan bantuan coding berbasis AI dari **OpenAI Codex / ChatGPT**. Bantuan AI digunakan sebagai alat engineering untuk implementasi, debugging, drafting dokumentasi, dan iterasi; arah project, pengujian hardware, dan keputusan akhir tetap berada pada maintainer.
 
 ## Lisensi
 
