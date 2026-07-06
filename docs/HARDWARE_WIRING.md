@@ -1,6 +1,6 @@
 # Hardware Wiring
 
-Last updated: 2026-07-03
+Last updated: 2026-07-06
 
 Baseline: Stable 05 / `v3.30`
 
@@ -166,6 +166,37 @@ Power notes:
 - GPS and ELRS should be powered according to their rated input voltage.
 - DJI O3/O4 should use its own correct supply.
 - A large electrolytic capacitor near the ESP32 5V/GND rail helped reduce reset behavior during servo/throttle movement in testing.
+
+## DJI O3/O4 Power And Cooling Notes
+
+Prototype air-unit power setup:
+
+- DJI O4/O3 and the cooling fan are powered from a separate 4S LiPo through a 12V BEC.
+- The cooling fan used in the prototype is a 3010 fan rated around 12V and approximately 12,500 RPM.
+
+O4 Pro cooling setup:
+
+- DJI O4 Pro has a metal case with passive heatsinking.
+- The prototype used a top-mounted fan blowing downward onto the O4 Pro case.
+
+O3 cooling setup:
+
+- DJI O3 thermal behavior is different from O4 Pro and needs more aggressive cooling in this prototype.
+- The prototype O3 top cover was replaced with an aftermarket/custom heatsink top cover.
+- Thermal paste on the O3 was replaced with Arctic MX-7.
+- Fan direction was changed to side-blow airflow, pushing air through the heatsink fins and O3 ventilation gaps instead of only blowing from the top.
+
+Possible O3 alternative:
+
+- If the original O3 enclosure is still used without a heatsink top cover, consider a stronger 3010 fan.
+- Some 3010 fans reach around 25,000 RPM at 8.4V, such as from a fully charged 2S pack.
+- Side-blow airflow may be more effective than top-blow airflow for the original O3 enclosure because air can move through the side vents and across the case openings.
+
+Important:
+
+- Always verify air-unit input voltage against DJI specifications and the exact BEC used.
+- Keep the air unit, fan, BEC, and high-current wiring away from GPS when possible.
+- Thermal performance can strongly affect field reliability, especially on DJI O3.
 
 ## GPS Placement Notes
 
