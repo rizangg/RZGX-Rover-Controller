@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-07-03
+Last updated: 2026-07-06
 
 This roadmap is intentionally practical. The project already works at the important proof-of-concept level.
 
@@ -25,6 +25,35 @@ Rationale:
 - Showing distance only is safer and more honest than showing a misleading arrow.
 
 ## Immediate Next Patch Candidates
+
+### WiFi Safety Gate
+
+Add stricter WiFi behavior so configuration is only available in a safe state.
+
+Proposed behavior:
+
+- WiFi AP may become active only after 60 seconds from a fresh reboot.
+- WiFi AP may become active only while arming is OFF.
+- If no device connects, WiFi should turn itself off after 60 seconds.
+- If arming turns ON while WiFi is active but no client is connected, WiFi should turn off immediately.
+- If a device is already connected to WiFi and arming turns ON, the vehicle should not be allowed to drive.
+- In that blocked state, show a blinking OSD warning: `WIFI STILL CONNECTED`.
+- The user must disconnect WiFi and repeat the arming sequence before ESC output is allowed.
+- In the configurator, show the arming channel in red when arming is active during a WiFi session, and require explicit safety consent before any ESC test output.
+- Consider adding a manual `Disconnect WiFi` button in the configurator.
+
+Rationale:
+
+- Field configuration should happen while the vehicle is stationary.
+- A saved phone WiFi profile could reconnect unintentionally.
+- ESC testing from the configurator should be treated as a deliberate bench/configuration mode, not normal driving mode.
+
+### Drive Stats Time Format
+
+Improve post-drive stats formatting:
+
+- Show drive time in minutes and seconds, not minutes only.
+- Example: `10 MINUTES 23 SECONDS`.
 
 ### Post-Drive Statistics
 
@@ -117,6 +146,49 @@ Possible future GPS settings:
 - GPS lost timeout.
 - Ignore GPS jitter below a small distance.
 - Optional home point acquisition debug indicator.
+
+### Modular Firmware Structure
+
+Consider slowly splitting the single Arduino sketch into clearer modules after the current stable baseline remains reliable.
+
+Candidate modules:
+
+- Configuration and persistent settings.
+- CRSF/ELRS input parsing.
+- MSP request/reply handling.
+- DisplayPort OSD renderer.
+- GPS parser/state.
+- IMU parser/calibration.
+- PWM output and safety gate.
+- WiFi configurator.
+
+Design note:
+
+- Do not do a large rewrite just for neatness.
+- Prefer small, testable extractions after a stable firmware backup exists.
+
+### Function-Based Channel Assignment
+
+Future configurator idea: keep vehicle functions fixed, but allow users to select which RC channel drives each function.
+
+Example mapping:
+
+| Function | Default channel |
+| --- | --- |
+| Steering | CH1 |
+| Gas/ESC | CH2 |
+| Camera Tilt | CH3 |
+| Camera Pan | CH4 |
+| Arming | CH5 |
+| Drive Mode | CH6 |
+| Winch | CH7 |
+| LED | CH8 |
+
+Design notes:
+
+- Safety-critical functions such as steering, gas, and arming should remain mandatory.
+- Optional functions such as camera pan/tilt, winch, and LED should have enable/disable toggles.
+- This is cleaner than asking "what should CH1 do?" because the firmware can remain organized around vehicle functions.
 
 ## Highest Priority
 
