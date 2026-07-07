@@ -61,8 +61,10 @@ The project is intended for manual FPV RC adventure, trailing, and light crawler
 - RadioMaster Boxer ELRS transmitter.
 - M10 GPS module.
 - MPU6050 IMU module.
-- RC car/crawler platform based on MN128.
-- External power regulation and capacitors as needed.
+- RC car/crawler platform based on MN128 with its stock 2S Li-ion drive battery.
+- ESP32 powered from the MN128 stock ESC 5V output into the ESP32 5V input header.
+- 1000 uF electrolytic capacitor near the ESP32 5V/GND rail for reset/brownout reduction.
+- External 12V BEC and cooling fan for DJI O3/O4, as used in the prototype.
 
 ## Pinout
 
@@ -78,7 +80,7 @@ Stable 05 baseline pinout:
 | ELRS CRSF TX | GPIO5 | Reserved for future telemetry |
 | Steering PWM | GPIO13 | CH1 steering output |
 | ESC PWM | GPIO14 | CH2 GAS output, arm-gated |
-| Battery ADC | GPIO1 | Via voltage divider |
+| Battery ADC | GPIO1 | MN128 2S battery via 100k/47k voltage divider |
 | MPU6050 SDA | GPIO8 | I2C |
 | MPU6050 SCL | GPIO9 | I2C |
 
@@ -93,6 +95,8 @@ Default WiFi AP:
 - URL: `http://10.10.4.1/`
 
 The configurator can adjust core settings such as craft name, steering/ESC direction, trims, battery thresholds, GPS home point settings, IMU calibration, and OSD visibility.
+
+Battery warnings are based on the GPIO1 ADC reading from the MN128 2S battery divider. `RETURN NOW` and `FUEL EMPTY` use configurable per-cell thresholds; `FUEL EMPTY` locks ESC output to neutral until reboot.
 
 ## Safety Notice
 
@@ -220,8 +224,10 @@ Project ini ditujukan untuk penggunaan manual FPV RC adventure, trailing, dan cr
 - RadioMaster Boxer ELRS.
 - Modul GPS M10.
 - Modul IMU MPU6050.
-- Platform RC MN128.
-- Regulator power, kapasitor, dan wiring sesuai kebutuhan build.
+- Platform RC MN128 dengan baterai penggerak bawaan Li-ion 2S.
+- ESP32 ditenagai dari output 5V ESC bawaan MN128 ke header 5V input ESP32.
+- Kapasitor elektrolit 1000 uF dipasang dekat rail 5V/GND ESP32 untuk mengurangi reset/brownout.
+- BEC 12V eksternal dan cooling fan untuk DJI O3/O4 sesuai setup prototype.
 
 ## Pinout
 
@@ -237,7 +243,7 @@ Pinout baseline Stable 05:
 | ELRS CRSF TX | GPIO5 | Disiapkan untuk telemetry ELRS |
 | Steering PWM | GPIO13 | Output steering CH1 |
 | ESC PWM | GPIO14 | Output GAS CH2, dikunci arming |
-| Battery ADC | GPIO1 | Melalui voltage divider |
+| Battery ADC | GPIO1 | Baterai MN128 2S melalui voltage divider 100k/47k |
 | MPU6050 SDA | GPIO8 | I2C |
 | MPU6050 SCL | GPIO9 | I2C |
 
@@ -252,6 +258,8 @@ Default WiFi AP:
 - URL: `http://10.10.4.1/`
 
 Configurator dapat digunakan untuk mengatur craft name, arah steering/ESC, trim, batas baterai, pengaturan home point GPS, kalibrasi IMU, dan visibility OSD.
+
+Peringatan baterai menggunakan pembacaan ADC GPIO1 dari voltage divider baterai MN128 2S. `RETURN NOW` dan `FUEL EMPTY` memakai threshold per-cell yang bisa diatur; `FUEL EMPTY` mengunci output ESC ke neutral sampai reboot.
 
 ## Peringatan Keselamatan
 
