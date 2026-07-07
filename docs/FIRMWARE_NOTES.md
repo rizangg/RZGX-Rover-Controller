@@ -117,12 +117,31 @@ Automatic home point recording waits until the satellite threshold is continuous
 
 Manual home point reset uses the same satellite threshold and is triggered by the configured gesture while disarmed.
 
+Manual home point update gesture:
+
+- CH5 arming OFF.
+- GPS fix valid.
+- Satellite count at or above the configured threshold.
+- GAS full forward held for 4 seconds.
+- Successful update shows `HOME POINT UPDATED`.
+
 Current GPS hardware notes:
 
 - Current module: Rush FPV M10 mini.
 - Previous module: Blitz M10 GPS.
 - Best observed satellite count in the Stable 05 field tests: `11`.
 - GPS performance improved from the previous day despite no wiring changes.
+
+## IMU Calibration
+
+The IMU can be zeroed to the current vehicle attitude.
+
+Supported methods:
+
+- WiFi configurator: `Set Current Position as Level`.
+- Gesture: CH5 arming OFF, GAS full reverse held for 4 seconds.
+
+Successful calibration shows `IMU CALIBRATED` on the OSD.
 
 ## Engine And Throttle Safety
 
