@@ -103,7 +103,7 @@ Firmware constant:
 
 ## Battery Voltage Divider
 
-GPIO1 senses main RC battery voltage through a resistor divider.
+GPIO1 senses the MN128 main 2S Li-ion drive battery voltage through a resistor divider.
 
 Current divider:
 
@@ -121,6 +121,8 @@ Important:
 
 - GPIO1 is a voltage sense input, not a power input.
 - ESP32 power still comes from USB, 5V pin, or a proper 5V regulator.
+- The firmware uses this ADC reading for average-cell voltage, `RETURN NOW`, and `FUEL EMPTY`.
+- `RETURN NOW` is a warning threshold. `FUEL EMPTY` is a lower threshold that locks ESC output to neutral until reboot.
 
 ## IMU Wiring
 
@@ -165,7 +167,9 @@ Power notes:
 - Servo/ESC power should come from ESC/BEC or a proper external regulator.
 - GPS and ELRS should be powered according to their rated input voltage.
 - DJI O3/O4 should use its own correct supply.
-- A large electrolytic capacitor near the ESP32 5V/GND rail helped reduce reset behavior during servo/throttle movement in testing.
+- In the prototype, ESP32 power is taken from the MN128 stock ESC 5V output into the ESP32 5V input header.
+- A 1000 uF electrolytic capacitor near the ESP32 5V/GND rail helped reduce reset behavior during servo/throttle movement in testing.
+- Use a capacitor voltage rating comfortably above the rail voltage and verify the actual part marking before publishing an exact voltage rating.
 
 ## DJI O3/O4 Power And Cooling Notes
 
