@@ -275,6 +275,45 @@ Not needed now:
 - Full Betaflight compatibility.
 - Full INAV Rover feature parity.
 
+### Experimental Branch: DJI SBUS Input Mode
+
+Explore an optional DJI-native control input path:
+
+```text
+DJI RC FPV 3
+-> DJI O3/O4 Air Unit via DJI control link
+-> Air Unit SBUS output
+-> ESP32 SBUS reader
+-> existing channel mapping, safety gate, PWM output, and OSD logic
+```
+
+This should be treated as an experimental branch, not a stable baseline feature.
+
+Possible branch name:
+
+- `experimental/dji-sbus-input`
+
+Why it is interesting:
+
+- It may allow a DJI-only control path without a separate ELRS receiver.
+- It is a useful compatibility experiment for O3/O4-based rover builds.
+- It can reuse the existing RZGX Rover Controller PWM, OSD, battery, GPS, and IMU logic once SBUS decoding is validated.
+
+Risks and unknowns:
+
+- SBUS UART details must be verified on ESP32, including baud rate, parity, stop bits, and signal inversion.
+- Actual DJI RC FPV 3 channel mapping through the Air Unit must be sniffed first.
+- DJI RC FPV 3 has far less channel/configuration flexibility than EdgeTX radios such as RM Boxer.
+- Failsafe behavior must be proven safe before enabling ESC output.
+- Ergonomics may be less ideal for ground vehicles than RM Boxer or RM MT12.
+
+Suggested first step:
+
+- Add SBUS sniffer mode only.
+- Print decoded CH1-CH16 values to Serial/WiFi diagnostics.
+- Confirm stick/button/channel mapping.
+- Keep PWM output disabled until arming and failsafe behavior is understood.
+
 Reason:
 
 - Current goal is manual RC car control plus DJI O4 OSD telemetry.
