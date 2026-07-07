@@ -95,6 +95,14 @@ Automatic home point acquisition waits until the configured satellite threshold 
 
 Manual home point update uses the same minimum satellite threshold.
 
+Manual home point update gesture:
+
+- CH5 arming OFF.
+- GPS fix valid.
+- Satellite count meets the configured minimum.
+- Hold GAS forward at full input for 4 seconds.
+- The OSD shows `HOME POINT UPDATED` after the new home point is accepted.
+
 ### IMU
 
 Configurable:
@@ -104,6 +112,15 @@ Configurable:
 - Reset IMU calibration.
 
 The OSD can show roll and pitch.
+
+IMU zero/level gesture:
+
+- CH5 arming OFF.
+- IMU data valid.
+- Hold GAS reverse at full input for 4 seconds.
+- The OSD shows `IMU CALIBRATED` after the current vehicle attitude is saved as level.
+
+The same level calibration can also be triggered from the WiFi configurator with `Set Current Position as Level`.
 
 ## OSD Visibility
 
@@ -141,13 +158,9 @@ These are field diagnostics, not a full profiler.
 
 ## Local Configurator
 
-An older local HTML configurator prototype existed during development.
+The older local configurator is still present in local drive.
 
-For public use, prefer the ESP32 WiFi Configurator served directly by the device at:
-
-`http://10.10.4.1/`
-
-The local configurator is not part of the current stable release workflow.
+It may lag behind the WiFi configurator. Prefer the ESP32 WiFi configurator unless local configurator work is explicitly requested.
 
 ## Upload / COM Port Notes
 
