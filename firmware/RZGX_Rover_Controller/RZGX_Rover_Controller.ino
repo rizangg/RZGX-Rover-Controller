@@ -1,5 +1,5 @@
 /*
-  DJI O4 + Goggles 3 MSP Emulator v3.30
+  DJI O4 + Goggles 3 MSP Emulator v3.32-exp-safety-gate
   Board: ESP32-S3 DevKit
 
   Wiring:
@@ -11,6 +11,8 @@
     ESP32 GPIO5  TX -> ELRS RX RX, optional telemetry later
     ESP32 GPIO13    -> Steering servo PWM from CH1
     ESP32 GPIO14    -> ESC signal PWM, gated by arm switch
+    ESP32 GPIO11    -> Camera pan servo PWM from CH4, optional
+    ESP32 GPIO12    -> Camera tilt servo PWM from CH3, optional
     ESP32 GPIO1     -> Battery voltage divider ADC sense
     ESP32 GPIO8     <-> MPU6050 SDA
     ESP32 GPIO9     -> MPU6050 SCL
@@ -40,6 +42,7 @@
 #include <DNSServer.h>
 #include <Wire.h>
 #include <math.h>
+#include <esp_task_wdt.h>
 
 HardwareSerial DJISerial(1);
 HardwareSerial GPSSerial(2);
@@ -48,7 +51,7 @@ Preferences configStore;
 WebServer wifiServer(80);
 DNSServer dnsServer;
 
-static const char FIRMWARE_VERSION[] = "V3.30";
+static const char FIRMWARE_VERSION[] = "V3.32 EXP";
 
 static const uint8_t MSP_RX_PIN = 16;
 static const uint8_t MSP_TX_PIN = 15;
@@ -78,6 +81,8 @@ static const size_t CRSF_RX_BUFFER_SIZE = 512;
 
 static const uint8_t ESC_PWM_PIN = 14;
 static const uint8_t STEERING_PWM_PIN = 13;
+static const uint8_t HEAD_PAN_PWM_PIN = 11;
+static const uint8_t HEAD_TILT_PWM_PIN = 12;
 static const uint16_t ESC_PWM_FREQ_HZ = 50;
 static const uint8_t ESC_PWM_RESOLUTION_BITS = 16;
 static const uint16_t ESC_PWM_MIN_US = 1000;
@@ -101,6 +106,17 @@ static const uint16_t DEFAULT_ESC_NEUTRAL_LOW_US = 1450;
 static const uint16_t DEFAULT_ESC_NEUTRAL_HIGH_US = 1550;
 static const bool DEFAULT_ESC_REVERSE_ASSIST = false;
 static const uint16_t DEFAULT_ESC_REVERSE_DELAY_MS = 250;
+static const bool DEFAULT_HEAD_PAN_ENABLED = false;
+static const bool DEFAULT_HEAD_TILT_ENABLED = false;
+static const bool DEFAULT_HEAD_PAN_REVERSED = false;
+static const bool DEFAULT_HEAD_TILT_REVERSED = false;
+static const int16_t DEFAULT_HEAD_PAN_TRIM_US = 0;
+static const int16_t DEFAULT_HEAD_TILT_TRIM_US = 0;
+static const uint8_t DEFAULT_HEAD_PAN_SCALE_PERCENT = 60;
+static const uint8_t DEFAULT_HEAD_TILT_SCALE_PERCENT = 100;
+static const uint16_t DEFAULT_HEAD_SERVO_MIN_US = 1000;
+static const uint16_t DEFAULT_HEAD_SERVO_MAX_US = 2000;
+static const uint16_t HEAD_SERVO_CENTER_US = 1500;
 static const uint16_t DRIVE_MODE_CHANNEL_INDEX = 5; // CH6
 static const uint16_t DRIVE_MODE_THRESHOLD_US = 1500;
 static const uint8_t DRIVE_MODE_CRAWL_THROTTLE_PERCENT = 50;
@@ -151,6 +167,11 @@ static const uint8_t DEFAULT_IMU_ROTATION = 0;
 static const uint8_t IMU_GESTURE_EXTREME_PERCENT = 90;
 static const uint16_t IMU_GESTURE_REVERSE_HOLD_MS = 4000;
 static const uint16_t IMU_CALIBRATION_NOTICE_MS = 2200;
+static const uint32_t DRIVE_STATS_MIN_DRIVE_MS = 180000;
+static const uint16_t DRIVE_STATS_SAMPLE_INTERVAL_MS = 500;
+static const uint16_t DRIVE_STATS_DISPLAY_MS = 45000;
+static const uint16_t DRIVE_STATS_TRIP_MIN_STEP_CM = 20;
+static const uint16_t DRIVE_STATS_TRIP_MAX_STEP_CM = 800;
 
 static bool steeringOutputReversed = DEFAULT_STEERING_OUTPUT_REVERSED;
 static bool throttleOutputReversed = DEFAULT_THROTTLE_OUTPUT_REVERSED;
@@ -164,6 +185,18 @@ static uint16_t escNeutralLowUs = DEFAULT_ESC_NEUTRAL_LOW_US;
 static uint16_t escNeutralHighUs = DEFAULT_ESC_NEUTRAL_HIGH_US;
 static bool escReverseAssistEnabled = DEFAULT_ESC_REVERSE_ASSIST;
 static uint16_t escReverseDelayMs = DEFAULT_ESC_REVERSE_DELAY_MS;
+static bool headPanEnabled = DEFAULT_HEAD_PAN_ENABLED;
+static bool headTiltEnabled = DEFAULT_HEAD_TILT_ENABLED;
+static bool headPanReversed = DEFAULT_HEAD_PAN_REVERSED;
+static bool headTiltReversed = DEFAULT_HEAD_TILT_REVERSED;
+static int16_t headPanTrimUs = DEFAULT_HEAD_PAN_TRIM_US;
+static int16_t headTiltTrimUs = DEFAULT_HEAD_TILT_TRIM_US;
+static uint8_t headPanScalePercent = DEFAULT_HEAD_PAN_SCALE_PERCENT;
+static uint8_t headTiltScalePercent = DEFAULT_HEAD_TILT_SCALE_PERCENT;
+static uint16_t headPanMinUs = DEFAULT_HEAD_SERVO_MIN_US;
+static uint16_t headPanMaxUs = DEFAULT_HEAD_SERVO_MAX_US;
+static uint16_t headTiltMinUs = DEFAULT_HEAD_SERVO_MIN_US;
+static uint16_t headTiltMaxUs = DEFAULT_HEAD_SERVO_MAX_US;
 static uint8_t imuRotation = DEFAULT_IMU_ROTATION;
 static float imuRollZeroDeg = 0.0f;
 static float imuPitchZeroDeg = 0.0f;
@@ -273,6 +306,7 @@ static const uint16_t DISPLAYPORT_INTERVAL_MS = 200;
 static const uint32_t WIFI_START_DELAY_MS = 60000;
 static const uint32_t WIFI_IDLE_AUTO_OFF_MS = 60000;
 static const uint16_t WIFI_SERVICE_INTERVAL_MS = 10;
+static const uint8_t WATCHDOG_TIMEOUT_SECONDS = 5;
 static const uint32_t PERF_WINDOW_US = 1000000;
 static const uint32_t O4_MSP_LINK_TIMEOUT_MS = 2000;
 static bool sendMspReplies = true;
@@ -331,8 +365,8 @@ static const char WIFI_CONFIG_HTML[] PROGMEM = R"rawliteral(
     <div class="channel-grid">
       <div class="cell label">CH1 STR</div><div class="cell value" id="ch1">--</div>
       <div class="cell label">CH2 GAS</div><div class="cell value" id="ch2">--</div>
-      <div class="cell label">CH3 UNASSIGNED</div><div class="cell value" id="ch3">--</div>
-      <div class="cell label">CH4 UNASSIGNED</div><div class="cell value" id="ch4">--</div>
+      <div class="cell label">CH3 TILT</div><div class="cell value" id="ch3">--</div>
+      <div class="cell label">CH4 PAN</div><div class="cell value" id="ch4">--</div>
       <div class="cell label">CH5 ARM</div><div class="cell value" id="ch5">--</div>
       <div class="cell label">CH6 MODE</div><div class="cell value" id="ch6">--</div>
       <div class="cell label">CH7 UNASSIGNED</div><div class="cell value" id="ch7">--</div>
@@ -362,6 +396,20 @@ static const char WIFI_CONFIG_HTML[] PROGMEM = R"rawliteral(
       <label>Neutral High<input id="escNeutralHighUs" name="escNeutralHighUs" type="number" min="1400" max="1800" step="5"></label>
       <label>Reverse Assist<select id="escReverseAssist" name="escReverseAssist"><option value="0">Off</option><option value="1">On</option></select></label>
       <label>Reverse Delay ms<input id="escReverseDelayMs" name="escReverseDelayMs" type="number" min="0" max="1500" step="10"></label>
+      <div class="section-title full">Head Servo</div>
+      <label>Pan Output<select id="headPanEnabled" name="headPanEnabled"><option value="0">Off</option><option value="1">On</option></select></label>
+      <label>Pan Direction<select id="headPanReversed" name="headPanReversed"><option value="0">Normal</option><option value="1">Reversed</option></select></label>
+      <label>Pan Scale %<input id="headPanScalePercent" name="headPanScalePercent" type="number" min="0" max="100" step="5"></label>
+      <label>Pan Trim<input id="headPanTrimUs" name="headPanTrimUs" type="number" min="-300" max="300" step="5"></label>
+      <label>Pan Min<input id="headPanMinUs" name="headPanMinUs" type="number" min="800" max="1600" step="5"></label>
+      <label>Pan Max<input id="headPanMaxUs" name="headPanMaxUs" type="number" min="1400" max="2200" step="5"></label>
+      <label>Tilt Output<select id="headTiltEnabled" name="headTiltEnabled"><option value="0">Off</option><option value="1">On</option></select></label>
+      <label>Tilt Direction<select id="headTiltReversed" name="headTiltReversed"><option value="0">Normal</option><option value="1">Reversed</option></select></label>
+      <label>Tilt Scale %<input id="headTiltScalePercent" name="headTiltScalePercent" type="number" min="0" max="100" step="5"></label>
+      <label>Tilt Trim<input id="headTiltTrimUs" name="headTiltTrimUs" type="number" min="-300" max="300" step="5"></label>
+      <label>Tilt Min<input id="headTiltMinUs" name="headTiltMinUs" type="number" min="800" max="1600" step="5"></label>
+      <label>Tilt Max<input id="headTiltMaxUs" name="headTiltMaxUs" type="number" min="1400" max="2200" step="5"></label>
+      <div class="sub full">Pan follows CH4 on GPIO11. Tilt follows CH3 on GPIO12. Outputs default to Off for safe setup.</div>
       <div class="section-title full">Battery Warning</div>
       <label>Cell Count<select id="batteryCellCount" name="batteryCellCount"><option value="1">1S</option><option value="2">2S</option><option value="3">3S</option><option value="4">4S</option><option value="5">5S</option><option value="6">6S</option></select></label>
       <label>Low Warning V/cell<input id="batteryWarnCellV" name="batteryWarnCellV" type="number" min="0" max="4.20" step="0.01"></label>
@@ -390,7 +438,7 @@ static const char WIFI_CONFIG_HTML[] PROGMEM = R"rawliteral(
         <label class="check"><input type="checkbox" id="osdShowDriveTime" name="osdShowDriveTime">Drive Time</label>
       </div>
       <div class="sub full">Safety warnings stay enabled even when optional OSD items are hidden.</div>
-      <button type="submit">Save</button><button type="button" class="secondary" id="defaults">Defaults</button>
+      <button type="submit">Save</button><button type="button" class="secondary" id="defaults">Defaults</button><button type="button" class="secondary" id="wifiOff">Disconnect WiFi</button>
     </div>
   </form>
   <div class="sub" id="msg">Connect to RZGXRover, then open 10.10.4.1</div>
@@ -400,15 +448,16 @@ const $=id=>document.getElementById(id);
 const osdKeys=['osdShowCraft','osdShowDriveMode','osdShowCoords','osdShowGps','osdShowBattery','osdShowLinkQuality','osdShowControls','osdShowHome','osdShowWifi','osdShowImu','osdShowDriveTime'];
 function pctRam(d){return d.heapSizeBytes?Math.max(0,Math.min(100,Math.round(((d.heapSizeBytes-d.freeHeapBytes)/d.heapSizeBytes)*100)))+'%':'--'}
 function up(ms){let s=Math.floor((ms||0)/1000),m=Math.floor(s/60);s%=60;return m?m+'m '+s+'s':s+'s'}
-function setConfig(d){$('fw').textContent='v'+(d.version||'--');['craftName','steeringTrimUs','steeringMinUs','steeringMaxUs','escMinUs','escMaxUs','escNeutralLowUs','escNeutralHighUs','escReverseDelayMs','homeMinSats','homeStabilityMs'].forEach(k=>{if(d[k]!=null)$(k).value=d[k]});$('steeringReversed').value=d.steeringReversed?1:0;$('throttleReversed').value=d.throttleReversed?1:0;$('djiArmedToO4').value=d.djiArmedToO4?1:0;$('escReverseAssist').value=d.escReverseAssist?1:0;$('imuRotation').value=d.imuRotation??0;$('batteryCellCount').value=d.batteryCellCount??2;$('batteryWarnCellV').value=((d.batteryWarnCellCv??310)/100).toFixed(2);$('batteryFuelEmptyCellV').value=((d.batteryFuelEmptyCellCv??300)/100).toFixed(2);osdKeys.forEach(k=>{if($(k))$(k).checked=d[k]!==false})}
+function setConfig(d){$('fw').textContent='v'+(d.version||'--');['craftName','steeringTrimUs','steeringMinUs','steeringMaxUs','escMinUs','escMaxUs','escNeutralLowUs','escNeutralHighUs','escReverseDelayMs','headPanScalePercent','headPanTrimUs','headPanMinUs','headPanMaxUs','headTiltScalePercent','headTiltTrimUs','headTiltMinUs','headTiltMaxUs','homeMinSats','homeStabilityMs'].forEach(k=>{if(d[k]!=null)$(k).value=d[k]});$('steeringReversed').value=d.steeringReversed?1:0;$('throttleReversed').value=d.throttleReversed?1:0;$('djiArmedToO4').value=d.djiArmedToO4?1:0;$('escReverseAssist').value=d.escReverseAssist?1:0;$('headPanEnabled').value=d.headPanEnabled?1:0;$('headPanReversed').value=d.headPanReversed?1:0;$('headTiltEnabled').value=d.headTiltEnabled?1:0;$('headTiltReversed').value=d.headTiltReversed?1:0;$('imuRotation').value=d.imuRotation??0;$('batteryCellCount').value=d.batteryCellCount??2;$('batteryWarnCellV').value=((d.batteryWarnCellCv??310)/100).toFixed(2);$('batteryFuelEmptyCellV').value=((d.batteryFuelEmptyCellCv??300)/100).toFixed(2);osdKeys.forEach(k=>{if($(k))$(k).checked=d[k]!==false})}
 function bat(d){return d.batteryVoltageValid?(Number(d.batteryVoltageCv||0)/100).toFixed(2)+'V':'-'}
-function setStatus(d){$('fw').textContent='v'+(d.version||'--');$('cpu').textContent=(d.cpuLoadPct??0)+'%';$('ram').textContent=pctRam(d);$('up').textContent=up(d.uptimeMs);$('bat').textContent=bat(d);$('ch1').textContent=d.rcCh1Us??'--';$('ch2').textContent=d.rcCh2Us??'--';$('ch3').textContent=d.rcCh3Us??'--';$('ch4').textContent=d.rcCh4Us??'--';$('ch5').textContent=(d.rcCh5Us??0)>1500?'ON':'OFF';$('ch6').textContent=d.driveMode||'--';$('ch7').textContent=d.rcCh7Us??'--';$('ch8').textContent=d.rcCh8Us??'--';$('o4msp').textContent=d.o4MspLink?'O4 MSP OK':'O4 MSP LOST';$('o4msp').className='link '+(d.o4MspLink?'ok':'lost');$('imuLive').textContent=d.imuDataValid?'IMU ROL '+Number(d.imuRollDeg||0).toFixed(1)+' / PIT '+Number(d.imuPitchDeg||0).toFixed(1)+' | FS '+(d.elrsFailsafeCount??0)+' / age '+(d.crsfRcFrameAgeMs??0)+'ms':'IMU unavailable | FS '+(d.elrsFailsafeCount??0)}
+function setStatus(d){$('fw').textContent='v'+(d.version||'--');$('cpu').textContent=(d.cpuLoadPct??0)+'%';$('ram').textContent=pctRam(d);$('up').textContent=up(d.uptimeMs);$('bat').textContent=bat(d);$('ch1').textContent=d.rcCh1Us??'--';$('ch2').textContent=d.rcCh2Us??'--';$('ch3').textContent=d.rcCh3Us??'--';$('ch4').textContent=d.rcCh4Us??'--';$('ch5').textContent=(d.rcCh5Us??0)>1500?'ON':'OFF';$('ch5').style.color=d.wifiArmingLockout?'#ff756d':'';$('ch6').textContent=d.driveMode||'--';$('ch7').textContent=d.rcCh7Us??'--';$('ch8').textContent=d.rcCh8Us??'--';$('o4msp').textContent=d.o4MspLink?'O4 MSP OK':'O4 MSP LOST';$('o4msp').className='link '+(d.o4MspLink?'ok':'lost');$('imuLive').textContent=d.imuDataValid?'IMU ROL '+Number(d.imuRollDeg||0).toFixed(1)+' / PIT '+Number(d.imuPitchDeg||0).toFixed(1)+' | FS '+(d.elrsFailsafeCount??0)+' / age '+(d.crsfRcFrameAgeMs??0)+'ms':'IMU unavailable | FS '+(d.elrsFailsafeCount??0)}
 async function load(){const d=await (await fetch('/api/config')).json();setConfig(d);setStatus(d)}
 async function tick(){try{setStatus(await (await fetch('/api/status')).json())}catch(e){}}
 $('form').addEventListener('submit',async e=>{e.preventDefault();const body=new URLSearchParams(new FormData(e.target));osdKeys.forEach(k=>body.set(k,$(k).checked?'1':'0'));const r=await fetch('/api/save',{method:'POST',body});$('msg').textContent=await r.text();load()});
 $('defaults').addEventListener('click',async()=>{if(confirm('Restore defaults?')){$('msg').textContent=await (await fetch('/api/defaults',{method:'POST'})).text();load()}});
 $('imuCalibrate').addEventListener('click',async()=>{if(confirm('Use the current vehicle position as roll 0 and pitch 0?')){$('msg').textContent=await (await fetch('/api/imu/calibrate',{method:'POST'})).text();load()}});
 $('imuReset').addEventListener('click',async()=>{if(confirm('Clear the saved IMU zero position?')){$('msg').textContent=await (await fetch('/api/imu/reset',{method:'POST'})).text();load()}});
+$('wifiOff').addEventListener('click',async()=>{if(confirm('Disconnect ESP32 WiFi now?')){try{await fetch('/api/wifi/off',{method:'POST'})}catch(e){}$('msg').textContent='WiFi disconnect requested'}});
 function setTrim(v){const i=$('steeringTrimUs');i.value=Math.max(-300,Math.min(300,Math.round((Number(v)||0)/5)*5));i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}))}
 document.querySelectorAll('[data-trim]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();setTrim((Number($('steeringTrimUs').value)||0)+Number(b.dataset.trim||0))}));
 $('centerTrim').addEventListener('click',e=>{e.preventDefault();setTrim(0)});
@@ -540,6 +589,7 @@ static uint32_t wifiConfigPortalStartMs = 0;
 static uint32_t lastWifiActivityMs = 0;
 static uint32_t lastWifiServiceMs = 0;
 static bool wifiAutoOffDone = false;
+static bool wifiArmingLockout = false;
 
 static CrsfParserState crsfParserState = CRSF_WAIT_ADDR;
 static uint8_t crsfFrameSize = 0;
@@ -567,11 +617,18 @@ static uint32_t steeringPulseEndUs = 0;
 static bool escPwmAttached = false;
 static bool escSawDisarmedSinceBoot = false;
 static bool escNeutralGateSatisfied = false;
+static bool escFailsafeRecoveryLocked = false;
 static bool escOutputLive = false;
 static bool escPulseHigh = false;
 static uint16_t escPulseUs = 1500;
 static uint32_t escFrameStartUs = 0;
 static uint32_t escPulseEndUs = 0;
+static bool headPanPwmAttached = false;
+static bool headTiltPwmAttached = false;
+static bool headPanOutputLive = false;
+static bool headTiltOutputLive = false;
+static uint16_t headPanPulseUs = HEAD_SERVO_CENTER_US;
+static uint16_t headTiltPulseUs = HEAD_SERVO_CENTER_US;
 static bool escReverseDelayActive = false;
 static uint32_t escReverseDelayStartMs = 0;
 static bool engineReadyBlinkActive = false;
@@ -629,6 +686,27 @@ static uint32_t imuCalibrationNoticeStartMs = 0;
 static bool driveTimerSessionActive = false;
 static uint32_t driveTimerStartMs = 0;
 static uint32_t driveTimerElapsedMs = 0;
+static bool driveStatsSessionActive = false;
+static uint32_t driveStatsLastSampleMs = 0;
+static uint32_t driveStatsSpeedSampleCount = 0;
+static uint32_t driveStatsSpeedSumKmh = 0;
+static uint16_t driveStatsMaxSpeedKmh = 0;
+static uint8_t driveStatsMaxSats = 0;
+static float driveStatsMaxRollAbsDeg = 0.0f;
+static float driveStatsMaxPitchAbsDeg = 0.0f;
+static bool driveStatsLastGpsValid = false;
+static double driveStatsLastLatDeg = 0.0;
+static double driveStatsLastLonDeg = 0.0;
+static uint32_t driveStatsTripDistanceCm = 0;
+static bool driveStatsDisplayActive = false;
+static uint32_t driveStatsDisplayStartMs = 0;
+static uint32_t driveStatsLastDurationMs = 0;
+static uint16_t driveStatsLastAvgSpeedKmh = 0;
+static uint16_t driveStatsLastMaxSpeedKmh = 0;
+static uint16_t driveStatsLastTripMeters = 0;
+static uint8_t driveStatsLastMaxSats = 0;
+static uint16_t driveStatsLastMaxRollDeg = 0;
+static uint16_t driveStatsLastMaxPitchDeg = 0;
 
 static uint8_t gpsFix = 0;
 static uint8_t gpsSats = 0;
@@ -951,6 +1029,19 @@ bool setHomePoint(double latDeg, double lonDeg, bool notify) {
   return true;
 }
 
+double distanceMetersBetween(double fromLatDeg, double fromLonDeg, double toLatDeg, double toLonDeg) {
+  const double earthRadiusMeters = 6371000.0;
+  const double lat1 = degToRad(fromLatDeg);
+  const double lat2 = degToRad(toLatDeg);
+  const double dLat = degToRad(toLatDeg - fromLatDeg);
+  const double dLon = degToRad(toLonDeg - fromLonDeg);
+  const double a = sin(dLat / 2.0) * sin(dLat / 2.0) +
+                   cos(lat1) * cos(lat2) * sin(dLon / 2.0) * sin(dLon / 2.0);
+  const double c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
+  const double distance = earthRadiusMeters * c;
+  return (isfinite(distance) && distance >= 0.0) ? distance : -1.0;
+}
+
 void updateHomeFromGps(double latDeg, double lonDeg) {
   if (!gpsPositionUsable(latDeg, lonDeg)) return;
 
@@ -974,16 +1065,10 @@ void updateHomeFromGps(double latDeg, double lonDeg) {
     return;
   }
 
-  const double earthRadiusMeters = 6371000.0;
   const double lat1 = degToRad(homeLatDeg);
   const double lat2 = degToRad(latDeg);
-  const double dLat = degToRad(latDeg - homeLatDeg);
   const double dLon = degToRad(lonDeg - homeLonDeg);
-
-  const double a = sin(dLat / 2.0) * sin(dLat / 2.0) +
-                   cos(lat1) * cos(lat2) * sin(dLon / 2.0) * sin(dLon / 2.0);
-  const double c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
-  const double distance = earthRadiusMeters * c;
+  const double distance = distanceMetersBetween(homeLatDeg, homeLonDeg, latDeg, lonDeg);
   if (!isfinite(distance) || distance < 0.0) return;
 
   const double y = sin(dLon) * cos(lat2);
@@ -1247,6 +1332,14 @@ bool failsafeActive() {
   return !crsfLinkActive();
 }
 
+bool wifiClientConnected() {
+  return wifiConfigPortalStarted && WiFi.softAPgetStationNum() > 0;
+}
+
+bool wifiBlocksDrive() {
+  return wifiClientConnected() && engineSwitchOn();
+}
+
 uint32_t crsfRcFrameAgeMs() {
   if (lastCrsfRcFrameMs == 0) return 0;
   return millis() - lastCrsfRcFrameMs;
@@ -1265,6 +1358,7 @@ void updateElrsFailsafeDiagnostics() {
     elrsFailsafeStartMs = now;
     if (lastCrsfRcFrameMs != 0) {
       elrsFailsafeCount++;
+      escFailsafeRecoveryLocked = true;
     }
   } else if (!active && lastFailsafeState) {
     if (elrsFailsafeStartMs != 0) {
@@ -1274,6 +1368,16 @@ void updateElrsFailsafeDiagnostics() {
   }
 
   lastFailsafeState = active;
+}
+
+void updateWifiArmingLockout() {
+  if (!engineSwitchOn()) {
+    wifiArmingLockout = false;
+    return;
+  }
+  if (wifiClientConnected()) {
+    wifiArmingLockout = true;
+  }
 }
 
 bool o4MspLinkActive() {
@@ -1307,6 +1411,79 @@ void updateDriveTimer() {
   // after the link returns and CH5 is deliberately switched off.
   if (crsfLinkActive() && !engineSwitchOn()) {
     driveTimerSessionActive = false;
+  }
+}
+
+void resetDriveStatsSession() {
+  driveStatsLastSampleMs = 0;
+  driveStatsSpeedSampleCount = 0;
+  driveStatsSpeedSumKmh = 0;
+  driveStatsMaxSpeedKmh = 0;
+  driveStatsMaxSats = 0;
+  driveStatsMaxRollAbsDeg = 0.0f;
+  driveStatsMaxPitchAbsDeg = 0.0f;
+  driveStatsLastGpsValid = false;
+  driveStatsLastLatDeg = 0.0;
+  driveStatsLastLonDeg = 0.0;
+  driveStatsTripDistanceCm = 0;
+}
+
+void updateDriveStats() {
+  const uint32_t now = millis();
+
+  if (driveTimerSessionActive) {
+    if (!driveStatsSessionActive) {
+      driveStatsSessionActive = true;
+      driveStatsDisplayActive = false;
+      resetDriveStatsSession();
+    }
+
+    if (now - driveStatsLastSampleMs >= DRIVE_STATS_SAMPLE_INTERVAL_MS) {
+      driveStatsLastSampleMs = now;
+      const uint16_t speedKmh = (uint16_t)lround(gpsSpeedCms * 0.036);
+      if (gpsFix) {
+        driveStatsSpeedSumKmh += speedKmh;
+        driveStatsSpeedSampleCount++;
+        if (speedKmh > driveStatsMaxSpeedKmh) driveStatsMaxSpeedKmh = speedKmh;
+        if (currentGpsPositionValid) {
+          if (driveStatsLastGpsValid) {
+            const double stepMeters = distanceMetersBetween(driveStatsLastLatDeg, driveStatsLastLonDeg, currentGpsLatDeg, currentGpsLonDeg);
+            if (stepMeters >= (DRIVE_STATS_TRIP_MIN_STEP_CM / 100.0) && stepMeters <= (DRIVE_STATS_TRIP_MAX_STEP_CM / 100.0)) {
+              driveStatsTripDistanceCm += (uint32_t)lround(stepMeters * 100.0);
+            }
+          }
+          driveStatsLastLatDeg = currentGpsLatDeg;
+          driveStatsLastLonDeg = currentGpsLonDeg;
+          driveStatsLastGpsValid = true;
+        }
+      }
+      if (gpsSats > driveStatsMaxSats) driveStatsMaxSats = gpsSats;
+      if (imuDataValid) {
+        driveStatsMaxRollAbsDeg = max(driveStatsMaxRollAbsDeg, fabsf(displayedImuRollDeg()));
+        driveStatsMaxPitchAbsDeg = max(driveStatsMaxPitchAbsDeg, fabsf(displayedImuPitchDeg()));
+      }
+    }
+    return;
+  }
+
+  if (driveStatsSessionActive && crsfLinkActive() && !engineSwitchOn() && driveTimerElapsedMs >= DRIVE_STATS_MIN_DRIVE_MS) {
+    driveStatsLastDurationMs = driveTimerElapsedMs;
+    driveStatsLastAvgSpeedKmh = driveStatsSpeedSampleCount ? (uint16_t)((driveStatsSpeedSumKmh + driveStatsSpeedSampleCount / 2) / driveStatsSpeedSampleCount) : 0;
+    driveStatsLastMaxSpeedKmh = driveStatsMaxSpeedKmh;
+    driveStatsLastTripMeters = (uint16_t)constrain((uint32_t)((driveStatsTripDistanceCm + 50) / 100), 0UL, 65535UL);
+    driveStatsLastMaxSats = driveStatsMaxSats;
+    driveStatsLastMaxRollDeg = (uint16_t)lroundf(driveStatsMaxRollAbsDeg);
+    driveStatsLastMaxPitchDeg = (uint16_t)lroundf(driveStatsMaxPitchAbsDeg);
+    driveStatsDisplayActive = true;
+    driveStatsDisplayStartMs = now;
+  }
+
+  if (crsfLinkActive() && !engineSwitchOn()) {
+    driveStatsSessionActive = false;
+  }
+
+  if (driveStatsDisplayActive && (failsafeActive() || now - driveStatsDisplayStartMs >= DRIVE_STATS_DISPLAY_MS)) {
+    driveStatsDisplayActive = false;
   }
 }
 
@@ -1351,6 +1528,21 @@ uint16_t steeringOutputPulseUs() {
   }
   const int32_t trimmedPulseUs = (int32_t)pulseUs + steeringTrimUs;
   return constrain(trimmedPulseUs, steeringMinUs, steeringMaxUs);
+}
+
+uint16_t scaledHeadServoPulseUs(uint16_t channelUs, bool reversed, int16_t trimUs, uint8_t scalePercent, uint16_t minUs, uint16_t maxUs) {
+  const int32_t rawDeltaUs = (int32_t)constrain(channelUs, 1000, 2000) - HEAD_SERVO_CENTER_US;
+  int32_t scaledDeltaUs = (rawDeltaUs * scalePercent) / 100;
+  if (reversed) scaledDeltaUs = -scaledDeltaUs;
+  return constrain((int32_t)HEAD_SERVO_CENTER_US + scaledDeltaUs + trimUs, minUs, maxUs);
+}
+
+uint16_t headPanOutputPulseUs() {
+  return scaledHeadServoPulseUs(rcChannels[3], headPanReversed, headPanTrimUs, headPanScalePercent, headPanMinUs, headPanMaxUs);
+}
+
+uint16_t headTiltOutputPulseUs() {
+  return scaledHeadServoPulseUs(rcChannels[2], headTiltReversed, headTiltTrimUs, headTiltScalePercent, headTiltMinUs, headTiltMaxUs);
 }
 
 bool driveModeCrawlActive() {
@@ -1408,6 +1600,52 @@ void updateSteeringPwm() {
   }
 }
 
+void attachHeadPanPwm() {
+  if (headPanPwmAttached) return;
+  pinMode(HEAD_PAN_PWM_PIN, OUTPUT);
+  digitalWrite(HEAD_PAN_PWM_PIN, LOW);
+  headPanPwmAttached = true;
+}
+
+void detachHeadPanPwm() {
+  digitalWrite(HEAD_PAN_PWM_PIN, LOW);
+  pinMode(HEAD_PAN_PWM_PIN, INPUT);
+  headPanPwmAttached = false;
+}
+
+void attachHeadTiltPwm() {
+  if (headTiltPwmAttached) return;
+  pinMode(HEAD_TILT_PWM_PIN, OUTPUT);
+  digitalWrite(HEAD_TILT_PWM_PIN, LOW);
+  headTiltPwmAttached = true;
+}
+
+void detachHeadTiltPwm() {
+  digitalWrite(HEAD_TILT_PWM_PIN, LOW);
+  pinMode(HEAD_TILT_PWM_PIN, INPUT);
+  headTiltPwmAttached = false;
+}
+
+void updateHeadServoPwm() {
+  if (crsfLinkActive() && headPanEnabled) {
+    headPanPulseUs = headPanOutputPulseUs();
+    attachHeadPanPwm();
+    headPanOutputLive = true;
+  } else {
+    detachHeadPanPwm();
+    headPanOutputLive = false;
+  }
+
+  if (crsfLinkActive() && headTiltEnabled) {
+    headTiltPulseUs = headTiltOutputPulseUs();
+    attachHeadTiltPwm();
+    headTiltOutputLive = true;
+  } else {
+    detachHeadTiltPwm();
+    headTiltOutputLive = false;
+  }
+}
+
 void attachEscPwm() {
   if (escPwmAttached) return;
 
@@ -1432,7 +1670,7 @@ void writeEscPulseUs(uint16_t pulseUs) {
 
 void servicePwmOutputs() {
   static uint32_t frameStartUs = 0;
-  if (!steeringPwmAttached && !escPwmAttached) {
+  if (!steeringPwmAttached && !escPwmAttached && !headPanPwmAttached && !headTiltPwmAttached) {
     frameStartUs = micros();
     return;
   }
@@ -1443,30 +1681,46 @@ void servicePwmOutputs() {
   }
   frameStartUs = nowUs;
 
-  const bool sendSteering = steeringPwmAttached;
-  const bool sendEsc = escPwmAttached;
-  const uint16_t steeringWidth = sendSteering ? steeringPulseUs : 0;
-  const uint16_t escWidth = sendEsc ? escPulseUs : 0;
-  const uint16_t firstWidth = (sendSteering && sendEsc) ? min(steeringWidth, escWidth) : max(steeringWidth, escWidth);
-  const uint16_t secondWidth = max(steeringWidth, escWidth);
+  const uint8_t pins[] = { STEERING_PWM_PIN, ESC_PWM_PIN, HEAD_PAN_PWM_PIN, HEAD_TILT_PWM_PIN };
+  const bool active[] = { steeringPwmAttached, escPwmAttached, headPanPwmAttached, headTiltPwmAttached };
+  const uint16_t widths[] = { steeringPulseUs, escPulseUs, headPanPulseUs, headTiltPulseUs };
+  uint16_t sortedWidths[4];
+  uint8_t sortedCount = 0;
 
-  if (sendSteering) digitalWrite(STEERING_PWM_PIN, HIGH);
-  if (sendEsc) digitalWrite(ESC_PWM_PIN, HIGH);
+  for (uint8_t i = 0; i < 4; i++) {
+    if (!active[i]) continue;
+    digitalWrite(pins[i], HIGH);
+    sortedWidths[sortedCount++] = widths[i];
+  }
 
-  delayMicroseconds(firstWidth);
+  for (uint8_t i = 0; i < sortedCount; i++) {
+    for (uint8_t j = i + 1; j < sortedCount; j++) {
+      if (sortedWidths[j] < sortedWidths[i]) {
+        const uint16_t tmp = sortedWidths[i];
+        sortedWidths[i] = sortedWidths[j];
+        sortedWidths[j] = tmp;
+      }
+    }
+  }
 
-  if (sendSteering && steeringWidth == firstWidth) digitalWrite(STEERING_PWM_PIN, LOW);
-  if (sendEsc && escWidth == firstWidth) digitalWrite(ESC_PWM_PIN, LOW);
-
-  if (secondWidth > firstWidth) {
-    delayMicroseconds(secondWidth - firstWidth);
-    if (sendSteering && steeringWidth == secondWidth) digitalWrite(STEERING_PWM_PIN, LOW);
-    if (sendEsc && escWidth == secondWidth) digitalWrite(ESC_PWM_PIN, LOW);
+  uint16_t elapsedPulseUs = 0;
+  for (uint8_t step = 0; step < sortedCount; step++) {
+    const uint16_t targetUs = sortedWidths[step];
+    if (targetUs > elapsedPulseUs) {
+      delayMicroseconds(targetUs - elapsedPulseUs);
+      elapsedPulseUs = targetUs;
+    }
+    for (uint8_t i = 0; i < 4; i++) {
+      if (active[i] && widths[i] == targetUs) {
+        digitalWrite(pins[i], LOW);
+      }
+    }
   }
 }
 
 void updateEscPwm() {
   const bool armed = engineArmed();
+  const bool wifiBlocked = wifiBlocksDrive() || wifiArmingLockout;
   bool nextOutputLive = false;
 
   if (batteryFuelEmptyActive && escSawDisarmedSinceBoot && escNeutralGateSatisfied) {
@@ -1483,9 +1737,19 @@ void updateEscPwm() {
     writeEscPulseUs(ESC_PWM_NEUTRAL_US);
     nextOutputLive = true;
     engineReadyBlinkActive = false;
+  } else if (wifiBlocked && escSawDisarmedSinceBoot && escNeutralGateSatisfied) {
+    resetEscReverseAssist();
+    writeEscPulseUs(ESC_PWM_NEUTRAL_US);
+    nextOutputLive = true;
+    engineReadyBlinkActive = false;
+  } else if (wifiBlocked) {
+    resetEscReverseAssist();
+    detachEscPwm();
+    engineReadyBlinkActive = false;
   } else if (!armed) {
     escSawDisarmedSinceBoot = true;
     escNeutralGateSatisfied = false;
+    escFailsafeRecoveryLocked = false;
     resetEscReverseAssist();
     engineReadyBlinkActive = false;
     detachEscPwm();
@@ -1497,7 +1761,20 @@ void updateEscPwm() {
       escNeutralGateSatisfied = true;
     }
 
-    if (escNeutralGateSatisfied) {
+    if (escFailsafeRecoveryLocked) {
+      if (throttleCenteredForEscStart()) {
+        escFailsafeRecoveryLocked = false;
+      } else if (escNeutralGateSatisfied) {
+        resetEscReverseAssist();
+        writeEscPulseUs(ESC_PWM_NEUTRAL_US);
+        nextOutputLive = true;
+      } else {
+        resetEscReverseAssist();
+        detachEscPwm();
+      }
+    }
+
+    if (!escFailsafeRecoveryLocked && escNeutralGateSatisfied) {
       const uint16_t desiredPulseUs = throttleOutputPulseUs();
 
       if (escReverseAssistEnabled && escPulseIsReverse(desiredPulseUs)) {
@@ -1517,7 +1794,7 @@ void updateEscPwm() {
       }
 
       nextOutputLive = true;
-    } else {
+    } else if (!escFailsafeRecoveryLocked) {
       resetEscReverseAssist();
       detachEscPwm();
     }
@@ -1844,6 +2121,7 @@ uint8_t signedArrowSymbol(int value, uint8_t positiveSymbol, uint8_t negativeSym
 
 void sendDisplayPortTestFrame() {
   char line[32];
+  char statLine[48];
   const int steering = channelPercent(rcChannels[0], true);
   const int throttle = channelPercent(rcChannels[1], true);
   const int speedKmh = (int)lround(gpsSpeedCms * 0.036);
@@ -1854,6 +2132,41 @@ void sendDisplayPortTestFrame() {
   dpHeartbeat();
   dpClearScreen();
   displayPortClearRequested = false;
+
+  if (driveStatsDisplayActive && !armed && !failsafeActive()) {
+    const uint32_t statSeconds = driveStatsLastDurationMs / 1000;
+    const uint32_t statMinutes = statSeconds / 60;
+    const uint32_t statRemainSeconds = statSeconds % 60;
+    const uint8_t statCol = 5;
+
+    dpWriteString(2, centerCol("DRIVE STATS"), "DRIVE STATS");
+
+    snprintf(statLine, sizeof(statLine), "DRIVE TIME        : %lu MINUTES %02lu SECONDS",
+             (unsigned long)statMinutes,
+             (unsigned long)statRemainSeconds);
+    dpWriteString(5, statCol, statLine);
+
+    snprintf(statLine, sizeof(statLine), "AVG SPEED         : %u KMH", driveStatsLastAvgSpeedKmh);
+    dpWriteString(6, statCol, statLine);
+
+    snprintf(statLine, sizeof(statLine), "MAX SPEED         : %u KMH", driveStatsLastMaxSpeedKmh);
+    dpWriteString(7, statCol, statLine);
+
+    snprintf(statLine, sizeof(statLine), "TRIP DISTANCE     : %u METERS", driveStatsLastTripMeters);
+    dpWriteString(8, statCol, statLine);
+
+    snprintf(statLine, sizeof(statLine), "MAX SATELLITE     : %u SATELLITES", driveStatsLastMaxSats);
+    dpWriteString(9, statCol, statLine);
+
+    snprintf(statLine, sizeof(statLine), "MAX ROLL          : %u DEGREE", driveStatsLastMaxRollDeg);
+    dpWriteString(10, statCol, statLine);
+
+    snprintf(statLine, sizeof(statLine), "MAX PITCH         : %u DEGREE", driveStatsLastMaxPitchDeg);
+    dpWriteString(11, statCol, statLine);
+
+    dpDrawScreen();
+    return;
+  }
 
   if (osdShowCraft) {
     dpWriteString(0, centerCol(craftName), craftName);
@@ -1924,6 +2237,10 @@ void sendDisplayPortTestFrame() {
     }
   } else if (failsafeActive()) {
     dpWriteString(9, centerCol("ELRS FAILSAFE"), "ELRS FAILSAFE");
+  } else if (wifiArmingLockout) {
+    if ((now / 250) % 2 == 0) {
+      dpWriteString(9, centerCol("WIFI STILL CONNECTED"), "WIFI STILL CONNECTED");
+    }
   } else if (batteryFuelEmptyActive) {
     if ((now / 250) % 2 == 0) {
       dpWriteString(9, centerCol("FUEL EMPTY"), "FUEL EMPTY");
@@ -2505,6 +2822,22 @@ void clampSurfaceConfig() {
   }
 
   escReverseDelayMs = constrain(escReverseDelayMs, 0, 1500);
+  headPanTrimUs = constrain(headPanTrimUs, -300, 300);
+  headTiltTrimUs = constrain(headTiltTrimUs, -300, 300);
+  headPanScalePercent = constrain(headPanScalePercent, 0, 100);
+  headTiltScalePercent = constrain(headTiltScalePercent, 0, 100);
+  headPanMinUs = constrain(headPanMinUs, 800, 1600);
+  headPanMaxUs = constrain(headPanMaxUs, 1400, 2200);
+  if (headPanMinUs >= headPanMaxUs) {
+    headPanMinUs = DEFAULT_HEAD_SERVO_MIN_US;
+    headPanMaxUs = DEFAULT_HEAD_SERVO_MAX_US;
+  }
+  headTiltMinUs = constrain(headTiltMinUs, 800, 1600);
+  headTiltMaxUs = constrain(headTiltMaxUs, 1400, 2200);
+  if (headTiltMinUs >= headTiltMaxUs) {
+    headTiltMinUs = DEFAULT_HEAD_SERVO_MIN_US;
+    headTiltMaxUs = DEFAULT_HEAD_SERVO_MAX_US;
+  }
   imuRotation &= 0x03;
   if (!isfinite(imuRollZeroDeg)) imuRollZeroDeg = 0.0f;
   if (!isfinite(imuPitchZeroDeg)) imuPitchZeroDeg = 0.0f;
@@ -2542,6 +2875,18 @@ void resetSurfaceConfigToDefaults() {
   escNeutralHighUs = DEFAULT_ESC_NEUTRAL_HIGH_US;
   escReverseAssistEnabled = DEFAULT_ESC_REVERSE_ASSIST;
   escReverseDelayMs = DEFAULT_ESC_REVERSE_DELAY_MS;
+  headPanEnabled = DEFAULT_HEAD_PAN_ENABLED;
+  headTiltEnabled = DEFAULT_HEAD_TILT_ENABLED;
+  headPanReversed = DEFAULT_HEAD_PAN_REVERSED;
+  headTiltReversed = DEFAULT_HEAD_TILT_REVERSED;
+  headPanTrimUs = DEFAULT_HEAD_PAN_TRIM_US;
+  headTiltTrimUs = DEFAULT_HEAD_TILT_TRIM_US;
+  headPanScalePercent = DEFAULT_HEAD_PAN_SCALE_PERCENT;
+  headTiltScalePercent = DEFAULT_HEAD_TILT_SCALE_PERCENT;
+  headPanMinUs = DEFAULT_HEAD_SERVO_MIN_US;
+  headPanMaxUs = DEFAULT_HEAD_SERVO_MAX_US;
+  headTiltMinUs = DEFAULT_HEAD_SERVO_MIN_US;
+  headTiltMaxUs = DEFAULT_HEAD_SERVO_MAX_US;
   imuRotation = DEFAULT_IMU_ROTATION;
   resetImuCalibration();
   batteryCellCount = DEFAULT_BATTERY_CELL_COUNT;
@@ -2579,6 +2924,18 @@ void loadSurfaceConfig() {
   escNeutralHighUs = configStore.getUShort("escNHigh", escNeutralHighUs);
   escReverseAssistEnabled = configStore.getBool("escRevAst", escReverseAssistEnabled);
   escReverseDelayMs = configStore.getUShort("escRevDly", escReverseDelayMs);
+  headPanEnabled = configStore.getBool("panEn", headPanEnabled);
+  headTiltEnabled = configStore.getBool("tiltEn", headTiltEnabled);
+  headPanReversed = configStore.getBool("panRev", headPanReversed);
+  headTiltReversed = configStore.getBool("tiltRev", headTiltReversed);
+  headPanTrimUs = configStore.getShort("panTrim", headPanTrimUs);
+  headTiltTrimUs = configStore.getShort("tiltTrim", headTiltTrimUs);
+  headPanScalePercent = configStore.getUChar("panScale", headPanScalePercent);
+  headTiltScalePercent = configStore.getUChar("tiltScale", headTiltScalePercent);
+  headPanMinUs = configStore.getUShort("panMin", headPanMinUs);
+  headPanMaxUs = configStore.getUShort("panMax", headPanMaxUs);
+  headTiltMinUs = configStore.getUShort("tiltMin", headTiltMinUs);
+  headTiltMaxUs = configStore.getUShort("tiltMax", headTiltMaxUs);
   imuRotation = configStore.getUChar("imuRot", imuRotation);
   imuRollZeroDeg = configStore.getFloat("imuRZero", imuRollZeroDeg);
   imuPitchZeroDeg = configStore.getFloat("imuPZero", imuPitchZeroDeg);
@@ -2621,6 +2978,18 @@ void saveSurfaceConfig() {
   configStore.putUShort("escNHigh", escNeutralHighUs);
   configStore.putBool("escRevAst", escReverseAssistEnabled);
   configStore.putUShort("escRevDly", escReverseDelayMs);
+  configStore.putBool("panEn", headPanEnabled);
+  configStore.putBool("tiltEn", headTiltEnabled);
+  configStore.putBool("panRev", headPanReversed);
+  configStore.putBool("tiltRev", headTiltReversed);
+  configStore.putShort("panTrim", headPanTrimUs);
+  configStore.putShort("tiltTrim", headTiltTrimUs);
+  configStore.putUChar("panScale", headPanScalePercent);
+  configStore.putUChar("tiltScale", headTiltScalePercent);
+  configStore.putUShort("panMin", headPanMinUs);
+  configStore.putUShort("panMax", headPanMaxUs);
+  configStore.putUShort("tiltMin", headTiltMinUs);
+  configStore.putUShort("tiltMax", headTiltMaxUs);
   configStore.putUChar("imuRot", imuRotation);
   configStore.putFloat("imuRZero", imuRollZeroDeg);
   configStore.putFloat("imuPZero", imuPitchZeroDeg);
@@ -2737,6 +3106,30 @@ void sendConfigJson(const char *event) {
     Serial.print(escReverseAssistEnabled ? "true" : "false");
     Serial.print(",\"escReverseDelayMs\":");
     Serial.print(escReverseDelayMs);
+    Serial.print(",\"headPanEnabled\":");
+    Serial.print(headPanEnabled ? "true" : "false");
+    Serial.print(",\"headPanReversed\":");
+    Serial.print(headPanReversed ? "true" : "false");
+    Serial.print(",\"headPanScalePercent\":");
+    Serial.print(headPanScalePercent);
+    Serial.print(",\"headPanTrimUs\":");
+    Serial.print(headPanTrimUs);
+    Serial.print(",\"headPanMinUs\":");
+    Serial.print(headPanMinUs);
+    Serial.print(",\"headPanMaxUs\":");
+    Serial.print(headPanMaxUs);
+    Serial.print(",\"headTiltEnabled\":");
+    Serial.print(headTiltEnabled ? "true" : "false");
+    Serial.print(",\"headTiltReversed\":");
+    Serial.print(headTiltReversed ? "true" : "false");
+    Serial.print(",\"headTiltScalePercent\":");
+    Serial.print(headTiltScalePercent);
+    Serial.print(",\"headTiltTrimUs\":");
+    Serial.print(headTiltTrimUs);
+    Serial.print(",\"headTiltMinUs\":");
+    Serial.print(headTiltMinUs);
+    Serial.print(",\"headTiltMaxUs\":");
+    Serial.print(headTiltMaxUs);
     Serial.print(",\"imuRotation\":");
     Serial.print(imuRotation);
     Serial.print(",\"imuRollZeroDeg\":");
@@ -2806,6 +3199,10 @@ void sendConfigJson(const char *event) {
   Serial.print(djiArmedToO4 ? "true" : "false");
   Serial.print(",\"failsafeActive\":");
   Serial.print(failsafeActive() ? "true" : "false");
+  Serial.print(",\"failsafeRecoveryLocked\":");
+  Serial.print(escFailsafeRecoveryLocked ? "true" : "false");
+  Serial.print(",\"wifiArmingLockout\":");
+  Serial.print(wifiArmingLockout ? "true" : "false");
   Serial.print(",\"elrsFailsafeCount\":");
   Serial.print(elrsFailsafeCount);
   Serial.print(",\"elrsFailsafeActiveMs\":");
@@ -2858,6 +3255,16 @@ void sendConfigJson(const char *event) {
   Serial.print(steeringOutputLive ? "true" : "false");
   Serial.print(",\"escLive\":");
   Serial.print(escOutputLive ? "true" : "false");
+  Serial.print(",\"headPanOutUs\":");
+  Serial.print(headPanPulseUs);
+  Serial.print(",\"headTiltOutUs\":");
+  Serial.print(headTiltPulseUs);
+  Serial.print(",\"headPanLive\":");
+  Serial.print(headPanOutputLive ? "true" : "false");
+  Serial.print(",\"headTiltLive\":");
+  Serial.print(headTiltOutputLive ? "true" : "false");
+  Serial.print(",\"driveStatsActive\":");
+  Serial.print(driveStatsDisplayActive ? "true" : "false");
   Serial.print(",\"mspRequests\":");
   Serial.print(commandCount);
   Serial.print(",\"rawBytes\":");
@@ -2911,7 +3318,7 @@ void sendConfigJson(const char *event) {
 
 String buildWifiConfigJson(bool includeConfig) {
   String json;
-  json.reserve(includeConfig ? 1600 : 1000);
+  json.reserve(includeConfig ? 2400 : 1400);
   json += "{\"type\":\"";
   json += includeConfig ? "config" : "status";
   json += "\",\"version\":\"";
@@ -2945,6 +3352,30 @@ String buildWifiConfigJson(bool includeConfig) {
     json += escReverseAssistEnabled ? "true" : "false";
     json += ",\"escReverseDelayMs\":";
     json += escReverseDelayMs;
+    json += ",\"headPanEnabled\":";
+    json += headPanEnabled ? "true" : "false";
+    json += ",\"headPanReversed\":";
+    json += headPanReversed ? "true" : "false";
+    json += ",\"headPanScalePercent\":";
+    json += headPanScalePercent;
+    json += ",\"headPanTrimUs\":";
+    json += headPanTrimUs;
+    json += ",\"headPanMinUs\":";
+    json += headPanMinUs;
+    json += ",\"headPanMaxUs\":";
+    json += headPanMaxUs;
+    json += ",\"headTiltEnabled\":";
+    json += headTiltEnabled ? "true" : "false";
+    json += ",\"headTiltReversed\":";
+    json += headTiltReversed ? "true" : "false";
+    json += ",\"headTiltScalePercent\":";
+    json += headTiltScalePercent;
+    json += ",\"headTiltTrimUs\":";
+    json += headTiltTrimUs;
+    json += ",\"headTiltMinUs\":";
+    json += headTiltMinUs;
+    json += ",\"headTiltMaxUs\":";
+    json += headTiltMaxUs;
     json += ",\"imuRotation\":";
     json += imuRotation;
     json += ",\"imuRollZeroDeg\":";
@@ -3015,6 +3446,10 @@ String buildWifiConfigJson(bool includeConfig) {
   json += djiArmedToO4 ? "true" : "false";
   json += ",\"failsafeActive\":";
   json += failsafeActive() ? "true" : "false";
+  json += ",\"failsafeRecoveryLocked\":";
+  json += escFailsafeRecoveryLocked ? "true" : "false";
+  json += ",\"wifiArmingLockout\":";
+  json += wifiArmingLockout ? "true" : "false";
   json += ",\"elrsFailsafeCount\":";
   json += elrsFailsafeCount;
   json += ",\"elrsFailsafeActiveMs\":";
@@ -3063,6 +3498,16 @@ String buildWifiConfigJson(bool includeConfig) {
   json += steeringPulseUs;
   json += ",\"escOutUs\":";
   json += escPulseUs;
+  json += ",\"headPanOutUs\":";
+  json += headPanPulseUs;
+  json += ",\"headTiltOutUs\":";
+  json += headTiltPulseUs;
+  json += ",\"headPanLive\":";
+  json += headPanOutputLive ? "true" : "false";
+  json += ",\"headTiltLive\":";
+  json += headTiltOutputLive ? "true" : "false";
+  json += ",\"driveStatsActive\":";
+  json += driveStatsDisplayActive ? "true" : "false";
   json += ",\"mspRequests\":";
   json += commandCount;
   json += ",\"rawBytes\":";
@@ -3148,6 +3593,30 @@ void applyConfigPair(char *pair) {
     escReverseAssistEnabled = parseConfigBool(value);
   } else if (strcmp(key, "escReverseDelayMs") == 0) {
     escReverseDelayMs = (uint16_t)atoi(value);
+  } else if (strcmp(key, "headPanEnabled") == 0) {
+    headPanEnabled = parseConfigBool(value);
+  } else if (strcmp(key, "headPanReversed") == 0) {
+    headPanReversed = parseConfigBool(value);
+  } else if (strcmp(key, "headPanScalePercent") == 0) {
+    headPanScalePercent = (uint8_t)atoi(value);
+  } else if (strcmp(key, "headPanTrimUs") == 0) {
+    headPanTrimUs = (int16_t)atoi(value);
+  } else if (strcmp(key, "headPanMinUs") == 0) {
+    headPanMinUs = (uint16_t)atoi(value);
+  } else if (strcmp(key, "headPanMaxUs") == 0) {
+    headPanMaxUs = (uint16_t)atoi(value);
+  } else if (strcmp(key, "headTiltEnabled") == 0) {
+    headTiltEnabled = parseConfigBool(value);
+  } else if (strcmp(key, "headTiltReversed") == 0) {
+    headTiltReversed = parseConfigBool(value);
+  } else if (strcmp(key, "headTiltScalePercent") == 0) {
+    headTiltScalePercent = (uint8_t)atoi(value);
+  } else if (strcmp(key, "headTiltTrimUs") == 0) {
+    headTiltTrimUs = (int16_t)atoi(value);
+  } else if (strcmp(key, "headTiltMinUs") == 0) {
+    headTiltMinUs = (uint16_t)atoi(value);
+  } else if (strcmp(key, "headTiltMaxUs") == 0) {
+    headTiltMaxUs = (uint16_t)atoi(value);
   } else if (strcmp(key, "imuRotation") == 0) {
     setImuRotation((uint8_t)atoi(value));
   } else if (strcmp(key, "batteryCellCount") == 0) {
@@ -3203,6 +3672,18 @@ void applyWifiConfigArgs() {
   if (wifiServer.hasArg("escNeutralHighUs")) escNeutralHighUs = (uint16_t)wifiServer.arg("escNeutralHighUs").toInt();
   if (wifiServer.hasArg("escReverseAssist")) escReverseAssistEnabled = parseConfigBool(wifiServer.arg("escReverseAssist").c_str());
   if (wifiServer.hasArg("escReverseDelayMs")) escReverseDelayMs = (uint16_t)wifiServer.arg("escReverseDelayMs").toInt();
+  if (wifiServer.hasArg("headPanEnabled")) headPanEnabled = parseConfigBool(wifiServer.arg("headPanEnabled").c_str());
+  if (wifiServer.hasArg("headPanReversed")) headPanReversed = parseConfigBool(wifiServer.arg("headPanReversed").c_str());
+  if (wifiServer.hasArg("headPanScalePercent")) headPanScalePercent = (uint8_t)wifiServer.arg("headPanScalePercent").toInt();
+  if (wifiServer.hasArg("headPanTrimUs")) headPanTrimUs = (int16_t)wifiServer.arg("headPanTrimUs").toInt();
+  if (wifiServer.hasArg("headPanMinUs")) headPanMinUs = (uint16_t)wifiServer.arg("headPanMinUs").toInt();
+  if (wifiServer.hasArg("headPanMaxUs")) headPanMaxUs = (uint16_t)wifiServer.arg("headPanMaxUs").toInt();
+  if (wifiServer.hasArg("headTiltEnabled")) headTiltEnabled = parseConfigBool(wifiServer.arg("headTiltEnabled").c_str());
+  if (wifiServer.hasArg("headTiltReversed")) headTiltReversed = parseConfigBool(wifiServer.arg("headTiltReversed").c_str());
+  if (wifiServer.hasArg("headTiltScalePercent")) headTiltScalePercent = (uint8_t)wifiServer.arg("headTiltScalePercent").toInt();
+  if (wifiServer.hasArg("headTiltTrimUs")) headTiltTrimUs = (int16_t)wifiServer.arg("headTiltTrimUs").toInt();
+  if (wifiServer.hasArg("headTiltMinUs")) headTiltMinUs = (uint16_t)wifiServer.arg("headTiltMinUs").toInt();
+  if (wifiServer.hasArg("headTiltMaxUs")) headTiltMaxUs = (uint16_t)wifiServer.arg("headTiltMaxUs").toInt();
   if (wifiServer.hasArg("imuRotation")) setImuRotation((uint8_t)wifiServer.arg("imuRotation").toInt());
   if (wifiServer.hasArg("batteryCellCount")) batteryCellCount = (uint8_t)wifiServer.arg("batteryCellCount").toInt();
   if (wifiServer.hasArg("batteryWarnCellCv")) {
@@ -3316,6 +3797,8 @@ void parseUsbConfigByte(char c) {
   }
 }
 
+void shutdownWifiConfigPortal();
+
 void sendWifiPortalPage() {
   lastWifiActivityMs = millis();
   wifiServer.sendHeader("Cache-Control", "no-store");
@@ -3387,6 +3870,11 @@ void setupWifiConfigPortal() {
     saveSurfaceConfig();
     wifiServer.send(200, "text/plain", "IMU calibration reset");
   });
+  wifiServer.on("/api/wifi/off", HTTP_POST, []() {
+    wifiServer.send(200, "text/plain", "WiFi disconnect requested");
+    delay(20);
+    shutdownWifiConfigPortal();
+  });
   wifiServer.onNotFound(handleWifiNotFound);
   wifiServer.begin();
   wifiConfigPortalStartMs = millis();
@@ -3406,7 +3894,18 @@ void shutdownWifiConfigPortal() {
 void serviceWifiConfigPortal() {
   if (!wifiConfigPortalStarted) return;
   const uint32_t now = millis();
-  if (WiFi.softAPgetStationNum() > 0) {
+  const uint8_t clientCount = WiFi.softAPgetStationNum();
+
+  if (engineSwitchOn()) {
+    if (clientCount > 0) {
+      wifiArmingLockout = true;
+    } else {
+      shutdownWifiConfigPortal();
+      return;
+    }
+  }
+
+  if (clientCount > 0) {
     lastWifiActivityMs = now;
   }
   if (now - lastWifiActivityMs >= WIFI_IDLE_AUTO_OFF_MS) {
@@ -3419,9 +3918,24 @@ void serviceWifiConfigPortal() {
   wifiServer.handleClient();
 }
 
+void setupWatchdog() {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  esp_task_wdt_config_t watchdogConfig = {};
+  watchdogConfig.timeout_ms = WATCHDOG_TIMEOUT_SECONDS * 1000;
+  watchdogConfig.idle_core_mask = 0;
+  watchdogConfig.trigger_panic = true;
+  esp_task_wdt_init(&watchdogConfig);
+#else
+  esp_task_wdt_init(WATCHDOG_TIMEOUT_SECONDS, true);
+#endif
+  esp_task_wdt_add(NULL);
+}
+
 void setup() {
   pinMode(STEERING_PWM_PIN, INPUT);
   pinMode(ESC_PWM_PIN, INPUT);
+  pinMode(HEAD_PAN_PWM_PIN, INPUT);
+  pinMode(HEAD_TILT_PWM_PIN, INPUT);
   pinMode(BATTERY_ADC_PIN, INPUT);
   analogReadResolution(12);
   analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
@@ -3445,6 +3959,8 @@ void setup() {
     Serial.println("Serial0 GPIO4 RX / GPIO5 TX = ELRS CRSF");
     Serial.println("GPIO13 = steering PWM output");
     Serial.println("GPIO14 = ESC PWM output, arm gated");
+    Serial.println("GPIO11 = camera pan PWM output, optional");
+    Serial.println("GPIO12 = camera tilt PWM output, optional");
     Serial.println("GPIO1 = battery ADC via 100k/47k divider");
     Serial.println("GPIO8 SDA / GPIO9 SCL = MPU6050 I2C");
     Serial.print("Steering reversed: ");
@@ -3476,6 +3992,7 @@ void setup() {
   DJISerial.begin(MSP_BAUD, SERIAL_8N1, MSP_RX_PIN, MSP_TX_PIN);
   GPSSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   CRSFSerial.begin(CRSF_BAUD, SERIAL_8N1, CRSF_RX_PIN, CRSF_TX_PIN);
+  setupWatchdog();
 
   displayPortClearRequested = true;
 
@@ -3513,13 +4030,16 @@ void loop() {
   }
 
   updateElrsFailsafeDiagnostics();
+  updateWifiArmingLockout();
   updateSteeringPwm();
+  updateHeadServoPwm();
   updateEscPwm();
   updateBatteryVoltage();
   updateBatteryWarning();
   updateBatteryFuelEmpty();
   updateImu();
   updateDriveTimer();
+  updateDriveStats();
   updateImuCalibrationGesture();
   updateHomePointResetGesture();
 
@@ -3684,10 +4204,11 @@ void loop() {
   }
 
   servicePwmOutputs();
-  if (WIFI_CONFIG_ENABLED && !wifiAutoOffDone && !wifiConfigPortalStarted && now >= WIFI_START_DELAY_MS) {
+  if (WIFI_CONFIG_ENABLED && !wifiAutoOffDone && !wifiConfigPortalStarted && now >= WIFI_START_DELAY_MS && !engineSwitchOn()) {
     setupWifiConfigPortal();
   }
   serviceWifiConfigPortal();
+  esp_task_wdt_reset();
 
   if (USB_CONFIG_MODE && usbConfigStreamEnabled) {
     const uint32_t now = millis();
