@@ -1,14 +1,20 @@
 # Firmware Notes
 
-Last updated: 2026-07-03
+Last updated: 2026-07-11
 
 Firmware file:
 
 `firmware/RZGX_Rover_Controller/RZGX_Rover_Controller.ino`
 
-Current stable version: `v3.30`
+Current stable version on `main`: `v3.30`
 
 Current stable mark: `Stable 05`
+
+Current experimental branch build: `v3.32 EXP`
+
+Suggested branch name:
+
+`experimental/v3.32-pan-tilt-safety`
 
 ## Firmware Role
 
@@ -42,6 +48,28 @@ Validated behavior:
 - Manual home point update gesture worked.
 - Home OSD now shows home icon plus distance only.
 - ELRS healthy-state center text was removed; LQ remains the normal link indicator.
+
+## Experimental v3.32 Notes
+
+`v3.32 EXP` is an experimental build intended for a separate GitHub branch, not a replacement for the Stable 05 baseline yet.
+
+Changes since Stable 05:
+
+- Adds optional camera pan servo output on GPIO11 from CH4.
+- Adds optional camera tilt servo output on GPIO12 from CH3.
+- Adds WiFi configurator controls for pan/tilt enable, reverse, trim, scale, min, and max.
+- Adds post-drive stats display after minimum drive time.
+- Adds stricter WiFi safety gate behavior when a configurator client is connected.
+- Adds ELRS failsafe recovery lock: after failsafe recovery, throttle must return neutral before ESC output is allowed again.
+- Adds ESP32 task watchdog.
+
+Field notes:
+
+- Pan and tilt have been tested and move proportionally according to intended design.
+- The latest experimental firmware has been smooth in several field runs, but is not yet marked stable.
+- WiFi configurator CH5 visual state turns red when arming is active.
+- Safety consent behavior around WiFi/arming still needs review before this branch can be promoted.
+- ELRS telemetry lost/connected voice warnings were observed after an ELRS 4.0.1 update while control remained normal and OSD did not show failsafe.
 
 ## Important Serial Ports
 
