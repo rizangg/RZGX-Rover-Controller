@@ -1,0 +1,43 @@
+# Branch Upload Notes
+
+Recommended GitHub branch:
+
+```text
+experimental/v3.32-pan-tilt-safety
+```
+
+Do not upload this package to `main` unless it has been promoted to stable.
+
+## Intended Status
+
+- `main`: Stable 05 / `v3.30`
+- `experimental/v3.32-pan-tilt-safety`: `V3.32 EXP`
+
+## Upload Checklist
+
+1. Open the GitHub repository.
+2. Create a new branch from `main`:
+
+   ```text
+   experimental/v3.32-pan-tilt-safety
+   ```
+
+3. Upload the contents of this package into that branch.
+4. Confirm that the branch firmware file contains:
+
+   ```cpp
+   static const char FIRMWARE_VERSION[] = "V3.32 EXP";
+   ```
+
+5. Use a commit message such as:
+
+   ```text
+   Add experimental v3.32 pan-tilt safety branch
+   ```
+
+## Notes
+
+- This branch includes optional camera pan/tilt outputs.
+- This branch includes WiFi safety-gate experiments.
+- This branch includes failsafe recovery lock and watchdog behavior.
+- This branch is promising but not yet marked stable.
