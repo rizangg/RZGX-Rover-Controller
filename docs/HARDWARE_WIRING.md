@@ -2,7 +2,9 @@
 
 Last updated: 2026-07-06
 
-Baseline: Stable 05 / `v3.30`
+Main stable baseline: Stable 05 / `v3.30`
+
+This package includes experimental `v3.32 EXP` pan/tilt outputs.
 
 ## Working Hardware
 
@@ -100,6 +102,40 @@ Firmware constant:
 Firmware constant:
 
 - `ESC_PWM_PIN = 14`
+
+### Experimental Camera Pan Servo
+
+Optional in `v3.32 EXP`.
+
+| Servo wire | Connection |
+| --- | --- |
+| Signal, usually yellow/white/orange | ESP32 GPIO11 |
+| Power, usually red | External 5V servo rail or BEC |
+| Ground, usually black/brown | Common ground |
+
+Firmware constant:
+
+- `HEAD_PAN_PWM_PIN = 11`
+
+### Experimental Camera Tilt Servo
+
+Optional in `v3.32 EXP`.
+
+| Servo wire | Connection |
+| --- | --- |
+| Signal, usually yellow/white/orange | ESP32 GPIO12 |
+| Power, usually red | External 5V servo rail or BEC |
+| Ground, usually black/brown | Common ground |
+
+Firmware constant:
+
+- `HEAD_TILT_PWM_PIN = 12`
+
+Important:
+
+- Pan/tilt servos should ideally use a separate 5V BEC or a proven stable servo rail.
+- Do not power servos from ESP32 3.3V.
+- Keep all grounds common.
 
 ## Battery Voltage Divider
 
