@@ -1,0 +1,51 @@
+# Experimental v3.32 Pan/Tilt Safety
+
+Status: experimental branch candidate.
+
+Suggested branch:
+
+```text
+experimental/v3.32-pan-tilt-safety
+```
+
+This build is based on the Stable 05 line but adds optional pan/tilt and safety-gate experiments.
+
+## Changes Since Stable 05
+
+- Firmware label: `V3.32 EXP`.
+- Camera pan servo output on GPIO11 from CH4.
+- Camera tilt servo output on GPIO12 from CH3.
+- Pan/tilt settings in the WiFi configurator:
+  - enable/disable,
+  - reverse,
+  - scale,
+  - trim,
+  - min/max pulse.
+- Post-drive stats overlay after minimum drive time.
+- WiFi disconnect button in the configurator.
+- WiFi-connected arming safety behavior with `WIFI STILL CONNECTED` OSD warning.
+- ELRS failsafe recovery lock requiring throttle neutral before ESC output resumes.
+- ESP32 task watchdog.
+
+## Field Test Notes
+
+- Pan and tilt movement worked according to intended design in field testing.
+- Vehicle control remained smooth.
+- The build is promising but not yet marked stable.
+
+Observed notes before promotion:
+
+- Review WiFi safety consent behavior in the configurator.
+- Investigate ELRS telemetry lost/connected voice warnings after ELRS 4.0.1 update.
+- Confirm no unexpected behavior during longer field tests.
+
+## Upload Notes
+
+Upload this build to a separate GitHub branch rather than replacing `main`.
+
+Recommended flow:
+
+1. Keep `main` on Stable 05 / `v3.30`.
+2. Create `experimental/v3.32-pan-tilt-safety`.
+3. Upload this package content into that branch.
+4. Do not create a stable release tag until field testing is complete.
