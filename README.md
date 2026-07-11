@@ -2,8 +2,9 @@
 
 Experimental ESP32-based surface controller for RC adventure/trailing vehicles with ELRS input, PWM output, GPS telemetry, battery monitoring, IMU data, WiFi configuration, and DJI MSP DisplayPort OSD.
 
-> Current public baseline target: **Stable 05 / firmware v3.30**  
-> Project status: **experimental alpha / stable prototype**  
+> Main branch public baseline: **Stable 05 / firmware v3.30**  
+> This branch/package: **Experimental v3.32 / pan-tilt-safety**  
+> Project status: **experimental alpha / stable prototype baseline with optional experimental features**  
 > This is not a Betaflight or INAV flight controller. It is a custom surface vehicle controller.
 
 ## Prototype
@@ -29,6 +30,30 @@ Core responsibilities:
 - Host a WiFi configurator for field setup.
 
 The project is intended for manual FPV RC adventure, trailing, and light crawler-style vehicles.
+
+## Experimental v3.32 Branch
+
+This package is prepared for an experimental GitHub branch, suggested name:
+
+```text
+experimental/v3.32-pan-tilt-safety
+```
+
+Changes compared with Stable 05 / `v3.30`:
+
+- Optional camera pan servo output on GPIO11, driven by CH4.
+- Optional camera tilt servo output on GPIO12, driven by CH3.
+- Pan/tilt configurator controls for enable, reverse, trim, scale, min, and max.
+- Post-drive stats overlay after a minimum drive duration.
+- Stricter WiFi safety behavior when a configurator client is connected.
+- Failsafe recovery lock that requires throttle to return neutral after ELRS failsafe recovery.
+- ESP32 task watchdog.
+
+Known experimental notes:
+
+- This branch has been field-tested by RZGX with smooth pan/tilt behavior, but it is not marked stable yet.
+- WiFi safety consent behavior still needs review in the configurator UI.
+- ELRS telemetry lost/connected voice warnings were observed after updating ELRS TX/RX firmware, while control and OSD remained normal. This is currently suspected to be ELRS telemetry-link behavior rather than rover firmware behavior.
 
 ## Main Features
 
@@ -128,7 +153,7 @@ Use at your own risk.
 Important files and folders:
 
 - `firmware/RZGX_Rover_Controller/RZGX_Rover_Controller.ino`  
-  Main Arduino sketch.
+  Main Arduino sketch. In this branch/package it contains experimental `v3.32`.
 - `docs/releases/STABLE-05.md`  
   Notes for the current stable baseline.
 - `docs/FIRMWARE_NOTES.md`  
