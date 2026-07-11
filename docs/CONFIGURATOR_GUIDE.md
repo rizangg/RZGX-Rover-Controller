@@ -2,7 +2,9 @@
 
 Last updated: 2026-07-03
 
-Firmware baseline: `v3.30` / Stable 05
+Main stable baseline: `v3.30` / Stable 05
+
+This branch/package also documents experimental `v3.32 EXP` pan/tilt and safety-gate controls.
 
 ## WiFi Configurator
 
@@ -22,7 +24,7 @@ The WiFi configurator is the preferred interface for normal field configuration.
 2. Wait for the WiFi portal to become available.
 3. Connect phone/laptop to `RZGXRover`.
 4. Open `http://10.10.4.1/`.
-5. Confirm firmware version shows `V3.30`.
+5. Confirm firmware version shows `V3.30` on stable, or `V3.32 EXP` on this experimental branch.
 6. Adjust settings.
 7. Save.
 
@@ -122,6 +124,23 @@ IMU zero/level gesture:
 
 The same level calibration can also be triggered from the WiFi configurator with `Set Current Position as Level`.
 
+### Experimental Camera Pan/Tilt
+
+Experimental `v3.32 EXP` settings:
+
+- Camera pan output enable/disable.
+- Camera pan reverse.
+- Camera pan scale, trim, min, and max.
+- Camera tilt output enable/disable.
+- Camera tilt reverse.
+- Camera tilt scale, trim, min, and max.
+
+Experimental safety note:
+
+- If a WiFi configurator client is connected while arming is active, vehicle drive output may be blocked and the OSD may show `WIFI STILL CONNECTED`.
+- The CH5 arming indicator may turn red to show that arming is active during a WiFi session.
+- This behavior is intentionally conservative, but the UI still needs more review before the branch is promoted to stable.
+
 ## OSD Visibility
 
 Optional OSD items can be toggled:
@@ -158,7 +177,9 @@ These are field diagnostics, not a full profiler.
 
 ## Local Configurator
 
-The older local configurator is still present in local drive.
+The older local configurator is still present:
+
+`outputs/surface-osd-configurator-preview/index.html`
 
 It may lag behind the WiFi configurator. Prefer the ESP32 WiFi configurator unless local configurator work is explicitly requested.
 
